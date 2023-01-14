@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-server
+  namespace: demo
+spec:
+  serviceName: redis-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      terminationGracePeriodSeconds: 10
+      initContainers:
+      - name: init-redis
+        image: redis:6.2.8-alpine
+        command:
+        - sh
+        - "-c"
+        - |
+          set -ex
+          [[ `hostname` =~ -([0-9]+)$ ]] || exit 1
+          ordinal=${BASH_REMATCH[1]}
+          if [[ $ordinal -eq 0 ]]; then
+            cp /mnt/redis.conf /etc/redis-config.conf
+          fi
+        volumeMounts:
+        - name: redis-persistent-storage
+          mountPath: /etc
+        - name: config-map
+          mountPath: /mnt/
+      containers:
+      - name: redis
+        image: redis:6.2.8-alpine
+        ports:
+        - containerPort: 6379
+          name: redis-server
+        resources:
+          requests:
+             memory: "64Mi"
+             cpu: "250m"
+          limits:
+             memory: "128Mi"
+             cpu: "500m"
+        command:
+          - redis-server
+          - "/etc/redis-config.conf"
+        volumeMounts:
+        - name: redis-persistent-storage
+          mountPath: /data
+        - name: config-map
+          mountPath: /var/lib/redis
+      volumes:
+      - name: redis-persistent-storage
+        persistentVolumeClaim:
+          claimName: redis-pv-claim
+      - name: config-map
+        configMap:
+          name: redis-config
